@@ -39,9 +39,9 @@
       font-size: 15px; font-weight: 700; cursor: pointer; color: #fff; background: var(--primary);
     }
     .btn-secondary { background: #64748b; margin-top: 8px; }
+    .btn-outline { background: transparent; color: var(--primary); border: 2px solid var(--primary); margin-top: 8px; }
     .btn-small { width: auto; padding: 6px 12px; font-size: 12px; }
 
-    /* Compact Feedback Banner */
     #feedbackBanner {
       display: none; padding: 8px 12px; border-radius: 20px; text-align: center;
       font-weight: 700; font-size: 13px; margin: 0 auto 10px auto; max-width: 90%;
@@ -56,13 +56,19 @@
     .online { background: #dcfce7; color: #166534; }
     .offline { background: #fee2e2; color: #991b1b; }
 
-    /* Modal Styling */
+    /* Modal Overlay */
     .modal-overlay {
       display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65);
       align-items: center; justify-content: center; padding: 16px; z-index: 100;
     }
     .modal-overlay.active { display: flex; }
-    .modal-card { background: #fff; padding: 18px; border-radius: 12px; width: 100%; max-width: 400px; }
+    .modal-card { background: #fff; padding: 18px; border-radius: 12px; width: 100%; max-width: 440px; max-height: 85vh; display: flex; flex-direction: column; }
+    
+    .record-list { overflow-y: auto; margin-top: 10px; flex-grow: 1; }
+    .record-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px;
+    }
   </style>
 </head>
 <body>
@@ -81,7 +87,6 @@
       </select>
     </div>
 
-    <!-- Hidden by default, toggled if creating a quick on-the-spot event -->
     <div id="newEventGroup" style="display:none; background:#f1f5f9; padding:10px; border-radius:8px; margin-bottom:10px;">
       <label>New Event Title</label>
       <input type="text" id="newEventTitle" placeholder="e.g., General Convocation">
@@ -95,6 +100,7 @@
     </div>
 
     <button onclick="startSession()">Start Attendance Session</button>
+    <button onclick="openPasscodeModal()" class="btn-outline">View Attendance Records</button>
   </div>
 
   <!-- VIEW 2: ACTIVE SCANNER VIEW -->
@@ -124,7 +130,43 @@
     </div>
   </div>
 
-  <!-- MODAL: REGISTER WALK-IN STUDENT -->
+  <!-- MODAL 1: ENTER SECRET CODE -->
+  <div id="passcodeModal" class="modal-overlay">
+    <div class="modal-card">
+      <h3 style="margin-top:0; color:var(--primary);">Restricted Access</h3>
+      <p style="font-size:13px; color:#64748b;">Enter the authorized passcode to view attendance records:</p>
+      
+      <div class="form-group">
+        <label>Security Passcode</label>
+        <input type="password" id="secretPasscode" placeholder="Enter code">
+      </div>
+
+      <div class="form-group">
+        <label>Filter By Event</label>
+        <select id="viewerEventSelect"></select>
+      </div>
+
+      <button onclick="verifyAndFetchRecords()">Authenticate & View</button>
+      <button onclick="closeModal('passcodeModal')" class="btn-secondary">Cancel</button>
+    </div>
+  </div>
+
+  <!-- MODAL 2: ATTENDANCE RECORDS VIEWER -->
+  <div id="recordsModal" class="modal-overlay">
+    <div class="modal-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
+        <div>
+          <h3 id="viewerHeaderTitle" style="margin:0; font-size:16px; color:var(--primary);">Attendance</h3>
+          <span style="font-size:12px; color:#64748b;">Unique Attendees: <b id="uniqueCountBadge">0</b></span>
+        </div>
+        <button onclick="closeModal('recordsModal')" class="btn-small btn-secondary" style="margin:0;">Close</button>
+      </div>
+
+      <div id="recordListContainer" class="record-list"></div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: REGISTER WALK-IN STUDENT -->
   <div id="walkInModal" class="modal-overlay">
     <div class="modal-card">
       <h3 style="margin-top:0; color:var(--danger); font-size:16px;">Student Not in Roster</h3>
@@ -148,7 +190,7 @@
       </div>
 
       <button onclick="submitWalkIn()" style="background:var(--success);">Save & Record</button>
-      <button onclick="closeModal()" class="btn-secondary">Dismiss</button>
+      <button onclick="closeModal('walkInModal')" class="btn-secondary">Dismiss</button>
     </div>
   </div>
 
@@ -161,11 +203,10 @@
     let scanQueue = JSON.parse(localStorage.getItem("scanmate_queue") || "[]");
     let sessionScannedIds = new Set(JSON.parse(localStorage.getItem("session_scanned_ids") || "[]"));
     let html5QrCode = null;
-    let isModalOpen = false;
+    let isModalActive = false;
     let lastScan = { id: "", time: 0 };
     let isCreatingNewEvent = false;
 
-    // Audio Feedback
     function playChime(type) {
       try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -188,7 +229,6 @@
       } catch (e) {}
     }
 
-    // Toggle custom event input
     function toggleNewEventField() {
       isCreatingNewEvent = !isCreatingNewEvent;
       document.getElementById("newEventGroup").style.display = isCreatingNewEvent ? "block" : "none";
@@ -217,15 +257,90 @@
           localStorage.setItem("scanmate_roster", JSON.stringify(rosterCache));
 
           const select = document.getElementById("eventSelect");
+          const viewerSelect = document.getElementById("viewerEventSelect");
+
           if (eventList.length > 0) {
-            select.innerHTML = eventList.map(ev => `<option value="${ev.id}">${ev.title} (${ev.ay})</option>`).join("");
+            const options = eventList.map(ev => `<option value="${ev.title}">${ev.title} (${ev.ay})</option>`).join("");
+            select.innerHTML = options;
+            viewerSelect.innerHTML = `<option value="ALL">All Events</option>` + options;
           } else {
-            select.innerHTML = `<option value="DEFAULT">General Campus Event</option>`;
+            select.innerHTML = `<option value="DRIFT: Acquaintance">DRIFT: Acquaintance</option>`;
+            viewerSelect.innerHTML = `<option value="ALL">All Events</option><option value="DRIFT: Acquaintance">DRIFT: Acquaintance</option>`;
           }
         }
       } catch (err) {
         document.getElementById("eventSelect").innerHTML = `<option value="OFFLINE">Offline Mode (Cached Roster)</option>`;
       }
+    }
+
+    // Modal Control
+    function openPasscodeModal() {
+      document.getElementById("secretPasscode").value = "";
+      document.getElementById("passcodeModal").classList.add("active");
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove("active");
+      isModalActive = false;
+    }
+
+    // Secure Record Fetcher
+    async function verifyAndFetchRecords() {
+      const passcode = document.getElementById("secretPasscode").value.trim();
+      const selectedEvent = document.getElementById("viewerEventSelect").value;
+
+      if (!passcode) {
+        alert("Please enter the passcode.");
+        return;
+      }
+
+      const btn = event.target;
+      btn.innerText = "Verifying...";
+      btn.disabled = true;
+
+      try {
+        const url = `${SCRIPT_URL}?action=view_logs&passcode=${encodeURIComponent(passcode)}&eventTitle=${encodeURIComponent(selectedEvent)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.status === "unauthorized") {
+          alert("Incorrect Passcode. Access denied.");
+        } else if (data.status === "success") {
+          closeModal("passcodeModal");
+          displayRecords(data);
+        } else {
+          alert("Error: " + (data.message || "Failed to load records."));
+        }
+      } catch (err) {
+        alert("Network error: Cannot reach database server.");
+      } finally {
+        btn.innerText = "Authenticate & View";
+        btn.disabled = false;
+      }
+    }
+
+    function displayRecords(data) {
+      document.getElementById("viewerHeaderTitle").innerText = data.eventTitle === "ALL" ? "All Events" : data.eventTitle;
+      document.getElementById("uniqueCountBadge").innerText = data.uniqueCount;
+
+      const container = document.getElementById("recordListContainer");
+      if (data.records.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding:20px; color:#64748b;">No attendance recorded yet.</div>`;
+      } else {
+        container.innerHTML = data.records.map((r, i) => `
+          <div class="record-item">
+            <div>
+              <b>${i + 1}. ${r.name}</b>
+              <div style="font-size:11px; color:#64748b;">ID: ${r.studentId} • ${r.program} ${r.year}</div>
+            </div>
+            <div style="text-align:right; font-size:11px; color:#64748b;">
+              ${r.scannedBy ? "By: " + r.scannedBy : ""}
+            </div>
+          </div>
+        `).join("");
+      }
+
+      document.getElementById("recordsModal").classList.add("active");
     }
 
     function startSession() {
@@ -278,16 +393,14 @@
     }
 
     function handleScanSuccess(decodedText) {
-      if (isModalOpen) return;
+      if (isModalActive) return;
 
       const cleanId = decodedText.trim();
       const now = Date.now();
 
-      // Debounce: ignore same code within 2.5 seconds to prevent spam
       if (cleanId === lastScan.id && (now - lastScan.time) < 2500) return;
       lastScan = { id: cleanId, time: now };
 
-      // 1. Check if already scanned during this session
       if (sessionScannedIds.has(cleanId)) {
         const student = rosterCache[cleanId];
         const studentName = student ? student.name : cleanId;
@@ -296,7 +409,6 @@
         return;
       }
 
-      // 2. Check if student exists in Master Roster
       const student = rosterCache[cleanId];
       if (student) {
         sessionScannedIds.add(cleanId);
@@ -313,14 +425,12 @@
           scannedAt: new Date().toISOString()
         });
       } else {
-        // Unknown student: trigger red flash and open walk-in modal
         playChime("invalid");
         triggerPillFeedback("invalid", `Unregistered: ${cleanId}`);
         openWalkInModal(cleanId);
       }
     }
 
-    // Small discreet notification pill
     function triggerPillFeedback(type, message) {
       const banner = document.getElementById("feedbackBanner");
       banner.style.display = "block";
@@ -360,19 +470,13 @@
       document.getElementById("queueCount").innerText = scanQueue.length;
     }
 
-    // Walk-in Student Handling
     function openWalkInModal(studentId) {
-      isModalOpen = true;
+      isModalActive = true;
       document.getElementById("modalId").value = studentId;
       document.getElementById("modalName").value = "";
       document.getElementById("modalProgram").value = "";
       document.getElementById("modalYear").value = "";
       document.getElementById("walkInModal").classList.add("active");
-    }
-
-    function closeModal() {
-      document.getElementById("walkInModal").classList.remove("active");
-      isModalOpen = false;
     }
 
     function submitWalkIn() {
@@ -402,11 +506,10 @@
         scannedAt: new Date().toISOString()
       });
 
-      closeModal();
+      closeModal("walkInModal");
       triggerPillFeedback("valid", `Walk-in Saved: ${name}`);
     }
 
-    // Background Syncing Engine
     async function syncQueueToServer() {
       if (scanQueue.length === 0 || !activeSession) return;
 
@@ -428,7 +531,7 @@
         if (res.ok) {
           scanQueue = scanQueue.slice(recordsToPush.length);
           localStorage.setItem("scanmate_queue", JSON.stringify(scanQueue));
-          activeSession.isNewEvent = false; // Prevent re-posting the new event row
+          activeSession.isNewEvent = false;
           localStorage.setItem("scanmate_session", JSON.stringify(activeSession));
           updateQueueUI();
         }
