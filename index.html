@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>LCC ScanMate</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    :root {
+      --primary: #003366;
+      --success-bg: #d1fae5;
+      --success-border: #059669;
+      --danger-bg: #fee2e2;
+      --danger-border: #dc2626;
+      --card-bg: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0; padding: 14px; background: #f8fafc;
+      transition: background-color 0.25s ease;
+    }
+
+    body.scan-valid { background-color: var(--success-bg) !important; }
+    body.scan-invalid { background-color: var(--danger-bg) !important; }
+
+    .card {
+      background: var(--card-bg); border-radius: 12px; padding: 16px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.06); margin-bottom: 12px;
+    }
+    .form-group { margin-bottom: 12px; }
+    label { font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 4px; display: block; }
+    select, input {
+      width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;
+      font-size: 14px; background: #fff;
+    }
+    button {
+      width: 100%; padding: 14px; border-radius: 8px; border: none;
+      font-size: 15px; font-weight: 700; cursor: pointer; color: #fff; background: var(--primary);
+    }
+    .btn-secondary { background: #64748b; margin-top: 8px; }
+
+    /* Top Feedback Banner */
+    #feedbackBanner {
+      display: none; padding: 14px; border-radius: 8px; text-align: center;
+      font-weight: 700; font-size: 16px; margin-bottom: 12px;
+      animation: popIn 0.2s ease-out;
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.95); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    #reader { width: 100%; border-radius: 10px; overflow: hidden; background: #000; }
+    .status-badge {
+      display: inline-block; padding: 3px 8px; border-radius: 12px;
+      font-size: 11px; font-weight: bold;
+    }
+    .online { background: #dcfce7; color: #166534; }
+    .offline { background: #fee2e2; color: #991b1b; }
+
+    /* Modal for Walk-Ins */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+      align-items: center; justify-content: center; padding: 16px; z-index: 100;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-card { background: #fff; padding: 20px; border-radius: 12px; width: 100%; max-width: 420px; }
+  </style>
+</head>
+<body>
+
+  <!-- VIEW 1: PRE-SCAN SESSION SETUP -->
+  <div id="setupView" class="card">
+    <h2 style="margin-top:0; color:var(--primary);">LCC ScanMate Setup</h2>
+    <div class="form-group">
+      <label>Select Event / Activity</label>
+      <select id="eventSelect">
+        <option value="">Loading events from sheet...</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Secretary Name / Station Section</label>
+      <input type="text" id="secretaryInput" placeholder="e.g., Maria Santos (BSIT 3A)">
+    </div>
+    <button onclick="startSession()">Start Attendance Scanning</button>
+  </div>
+
+  <!-- VIEW 2: ACTIVE SCANNER VIEW -->
+  <div id="scannerView" style="display:none;">
+    <div id="feedbackBanner"></div>
+
+    <div class="card" style="padding: 12px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <span id="activeEventTitle" style="font-weight:700; font-size:15px; color:#0f172a;"></span>
+          <div id="activeSecretaryName" style="font-size:12px; color:#64748b;"></div>
+        </div>
+        <div style="text-align: right;">
+          <span id="netStatus" class="status-badge online">ONLINE</span>
+          <div style="font-size:11px; color:#475569; margin-top:4px;">
+            Queue: <b id="queueCount">0</b>
+          </div>
+        </div>
+      </div>
+
+      <div id="reader" style="margin-top:10px;"></div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:10px;">
+        <button onclick="triggerManualSync()" style="padding:10px; font-size:13px;">Force Sync</button>
+        <button onclick="exitSession()" class="btn-secondary" style="padding:10px; font-size:13px; margin:0;">End Session</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: REGISTER WALK-IN STUDENT -->
+  <div id="walkInModal" class="modal-overlay">
+    <div class="modal-card">
+      <h3 style="margin-top:0; color:var(--danger-border);">Unregistered Student ID</h3>
+      <p style="font-size:13px; color:#64748b;">ID not found in Master Roster. Enter student details below to record attendance:</p>
+      
+      <div class="form-group">
+        <label>Student ID</label>
+        <input type="text" id="modalId" readonly style="background:#f1f5f9;">
+      </div>
+      <div class="form-group">
+        <label>Full Name (Last, First M.I.)</label>
+        <input type="text" id="modalName" placeholder="e.g., Dela Cruz, Juan P.">
+      </div>
+      <div class="form-group">
+        <label>Program / Department</label>
+        <input type="text" id="modalProgram" placeholder="e.g., BSIT">
+      </div>
+      <div class="form-group">
+        <label>Year Level</label>
+        <input type="text" id="modalYear" placeholder="e.g., 3">
+      </div>
+
+      <button onclick="submitWalkIn()" style="background:var(--success-border);">Save & Record Scan</button>
+      <button onclick="closeModal()" class="btn-secondary">Cancel Scan</button>
+    </div>
+  </div>
+
+  <script>
+    // PASTE YOUR DEPLOYED APPS SCRIPT WEB APP URL HERE:
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwV0TcI8F2QoK06GhEO24VaO2IVpleJvq0hjKHtVbNcRvryMcIzvfhdPF8llReggu8bFQ/exec";
+
+    let activeSession = null;
+    let rosterCache = {};
+    let eventList = [];
+    let scanQueue = JSON.parse(localStorage.getItem("scanmate_queue") || "[]");
+    let html5QrCode = null;
+    let isModalOpen = false;
+    let lastScan = { id: "", time: 0 };
+
+    function playBeep(success) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        osc.connect(ctx.destination);
+        osc.frequency.value = success ? 880 : 300;
+        osc.start();
+        setTimeout(() => { osc.stop(); ctx.close(); }, success ? 140 : 300);
+      } catch (e) {}
+    }
+
+    async function initApp() {
+      rosterCache = JSON.parse(localStorage.getItem("scanmate_roster") || "{}");
+      activeSession = JSON.parse(localStorage.getItem("scanmate_session") || "null");
+
+      // Auto-resume active session if secretary switched tabs/apps
+      if (activeSession) {
+        resumeScannerView();
+        return;
+      }
+
+      await fetchRosterAndEvents();
+    }
+
+    async function fetchRosterAndEvents() {
+      try {
+        const res = await fetch(SCRIPT_URL);
+        const data = await res.json();
+        
+        if (data.status === "success") {
+          rosterCache = data.roster;
+          eventList = data.events;
+          localStorage.setItem("scanmate_roster", JSON.stringify(rosterCache));
+
+          const select = document.getElementById("eventSelect");
+          if (eventList.length > 0) {
+            select.innerHTML = eventList.map(ev => `<option value="${ev.id}">${ev.title} (${ev.ay})</option>`).join("");
+          } else {
+            select.innerHTML = `<option value="DEFAULT">General Campus Event</option>`;
+          }
+        }
+      } catch (err) {
+        document.getElementById("eventSelect").innerHTML = `<option value="OFFLINE">Offline Mode (Cached Roster)</option>`;
+      }
+    }
+
+    function startSession() {
+      const select = document.getElementById("eventSelect");
+      const eventId = select.value;
+      const eventTitle = select.options[select.selectedIndex]?.text || "General Event";
+      const secretary = document.getElementById("secretaryInput").value.trim();
+
+      if (!secretary) {
+        alert("Please enter the Secretary Name / Station.");
+        return;
+      }
+
+      activeSession = { eventId, eventTitle, secretary };
+      localStorage.setItem("scanmate_session", JSON.stringify(activeSession));
+
+      resumeScannerView();
+    }
+
+    function resumeScannerView() {
+      document.getElementById("setupView").style.display = "none";
+      document.getElementById("scannerView").style.display = "block";
+      document.getElementById("activeEventTitle").innerText = activeSession.eventTitle;
+      document.getElementById("activeSecretaryName").innerText = "Operator: " + activeSession.secretary;
+      updateQueueUI();
+      launchCamera();
+    }
+
+    function launchCamera() {
+      html5QrCode = new Html5Qrcode("reader");
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 15, qrbox: { width: 250, height: 250 } },
+        handleScanSuccess
+      ).catch(err => console.error("Camera access error:", err));
+    }
+
+    function handleScanSuccess(decodedText) {
+      if (isModalOpen) return;
+
+      const now = Date.now();
+      // 3-second debounce per student to prevent rapid-fire duplicates
+      if (decodedText === lastScan.id && (now - lastScan.time) < 3000) return;
+      lastScan = { id: decodedText, time: now };
+
+      const student = rosterCache[decodedText];
+
+      if (student) {
+        playBeep(true);
+        triggerVisualFeedback(true, `Recorded: ${student.name}`);
+        appendQueueRecord({
+          studentId: decodedText,
+          name: student.name,
+          program: student.program,
+          year: student.year,
+          isWalkin: false,
+          scannedAt: new Date().toISOString()
+        });
+      } else {
+        playBeep(false);
+        triggerVisualFeedback(false, `Unregistered ID: ${decodedText}`);
+        openWalkInModal(decodedText);
+      }
+    }
+
+    function triggerVisualFeedback(isValid, message) {
+      const banner = document.getElementById("feedbackBanner");
+      banner.style.display = "block";
+      banner.innerText = message;
+
+      if (isValid) {
+        document.body.className = "scan-valid";
+        banner.style.background = "#059669";
+        banner.style.color = "#ffffff";
+      } else {
+        document.body.className = "scan-invalid";
+        banner.style.background = "#dc2626";
+        banner.style.color = "#ffffff";
+      }
+
+      setTimeout(() => {
+        document.body.className = "";
+        banner.style.display = "none";
+      }, 2200);
+    }
+
+    function appendQueueRecord(record) {
+      scanQueue.push(record);
+      localStorage.setItem("scanmate_queue", JSON.stringify(scanQueue));
+      updateQueueUI();
+
+      if (navigator.onLine) {
+        syncQueueToServer();
+      }
+    }
+
+    function updateQueueUI() {
+      document.getElementById("queueCount").innerText = scanQueue.length;
+    }
+
+    function openWalkInModal(studentId) {
+      isModalOpen = true;
+      document.getElementById("modalId").value = studentId;
+      document.getElementById("modalName").value = "";
+      document.getElementById("modalProgram").value = "";
+      document.getElementById("modalYear").value = "";
+      document.getElementById("walkInModal").classList.add("active");
+    }
+
+    function closeModal() {
+      document.getElementById("walkInModal").classList.remove("active");
+      isModalOpen = false;
+    }
+
+    function submitWalkIn() {
+      const id = document.getElementById("modalId").value;
+      const name = document.getElementById("modalName").value.trim();
+      const program = document.getElementById("modalProgram").value.trim();
+      const year = document.getElementById("modalYear").value.trim();
+
+      if (!name) {
+        alert("Full Name is required.");
+        return;
+      }
+
+      rosterCache[id] = { name, program, year };
+      localStorage.setItem("scanmate_roster", JSON.stringify(rosterCache));
+
+      appendQueueRecord({
+        studentId: id,
+        name: name,
+        program: program,
+        year: year,
+        isWalkin: true,
+        addToRoster: true,
+        scannedAt: new Date().toISOString()
+      });
+
+      closeModal();
+      triggerVisualFeedback(true, `Walk-in Saved: ${name}`);
+    }
+
+    async function syncQueueToServer() {
+      if (scanQueue.length === 0 || !activeSession) return;
+
+      const recordsToPush = [...scanQueue];
+      try {
+        const res = await fetch(SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            eventId: activeSession.eventId,
+            eventTitle: activeSession.eventTitle,
+            scannedBy: activeSession.secretary,
+            records: recordsToPush
+          })
+        });
+
+        if (res.ok) {
+          scanQueue = scanQueue.slice(recordsToPush.length);
+          localStorage.setItem("scanmate_queue", JSON.stringify(scanQueue));
+          updateQueueUI();
+        }
+      } catch (err) {
+        console.log("Device offline; records stay preserved locally.");
+      }
+    }
+
+    function triggerManualSync() {
+      if (!navigator.onLine) {
+        alert("Device is offline. Connect to Wi-Fi or mobile data first.");
+        return;
+      }
+      syncQueueToServer();
+    }
+
+    function exitSession() {
+      if (scanQueue.length > 0) {
+        if (!confirm(`You have ${scanQueue.length} unsynced scans in queue. End session anyway?`)) {
+          return;
+        }
+      }
+      localStorage.removeItem("scanmate_session");
+      location.reload();
+    }
+
+    window.addEventListener("online", () => {
+      document.getElementById("netStatus").innerText = "ONLINE";
+      document.getElementById("netStatus").className = "status-badge online";
+      syncQueueToServer();
+    });
+
+    window.addEventListener("offline", () => {
+      document.getElementById("netStatus").innerText = "OFFLINE";
+      document.getElementById("netStatus").className = "status-badge offline";
+    });
+
+    initApp();
+  </script>
+</body>
+</html>
