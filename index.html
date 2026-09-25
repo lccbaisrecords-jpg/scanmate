@@ -8,82 +8,93 @@
   <style>
     :root {
       --primary: #003366;
-      --success-bg: #d1fae5;
-      --success-border: #059669;
-      --danger-bg: #fee2e2;
-      --danger-border: #dc2626;
+      --success: #16a34a;
+      --warning: #d97706;
+      --danger: #dc2626;
       --card-bg: #ffffff;
     }
     * { box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0; padding: 14px; background: #f8fafc;
-      transition: background-color 0.25s ease;
+      margin: 0; padding: 12px; background: #f8fafc;
+      transition: background-color 0.2s ease;
     }
 
-    body.scan-valid { background-color: var(--success-bg) !important; }
-    body.scan-invalid { background-color: var(--danger-bg) !important; }
+    body.scan-valid { background-color: #dcfce7 !important; }
+    body.scan-duplicate { background-color: #fef3c7 !important; }
+    body.scan-invalid { background-color: #fee2e2 !important; }
 
     .card {
-      background: var(--card-bg); border-radius: 12px; padding: 16px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.06); margin-bottom: 12px;
+      background: var(--card-bg); border-radius: 12px; padding: 14px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.06); margin-bottom: 10px;
     }
-    .form-group { margin-bottom: 12px; }
+    .form-group { margin-bottom: 10px; }
     label { font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 4px; display: block; }
     select, input {
-      width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;
+      width: 100%; padding: 11px; border-radius: 8px; border: 1px solid #cbd5e1;
       font-size: 14px; background: #fff;
     }
     button {
-      width: 100%; padding: 14px; border-radius: 8px; border: none;
+      width: 100%; padding: 13px; border-radius: 8px; border: none;
       font-size: 15px; font-weight: 700; cursor: pointer; color: #fff; background: var(--primary);
     }
     .btn-secondary { background: #64748b; margin-top: 8px; }
+    .btn-small { width: auto; padding: 6px 12px; font-size: 12px; }
 
-    /* Top Feedback Banner */
+    /* Compact Feedback Banner */
     #feedbackBanner {
-      display: none; padding: 14px; border-radius: 8px; text-align: center;
-      font-weight: 700; font-size: 16px; margin-bottom: 12px;
-      animation: popIn 0.2s ease-out;
-    }
-    @keyframes popIn {
-      0% { transform: scale(0.95); opacity: 0; }
-      100% { transform: scale(1); opacity: 1; }
+      display: none; padding: 8px 12px; border-radius: 20px; text-align: center;
+      font-weight: 700; font-size: 13px; margin: 0 auto 10px auto; max-width: 90%;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
 
     #reader { width: 100%; border-radius: 10px; overflow: hidden; background: #000; }
-    .status-badge {
+    .badge {
       display: inline-block; padding: 3px 8px; border-radius: 12px;
       font-size: 11px; font-weight: bold;
     }
     .online { background: #dcfce7; color: #166534; }
     .offline { background: #fee2e2; color: #991b1b; }
 
-    /* Modal for Walk-Ins */
+    /* Modal Styling */
     .modal-overlay {
       display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65);
       align-items: center; justify-content: center; padding: 16px; z-index: 100;
     }
     .modal-overlay.active { display: flex; }
-    .modal-card { background: #fff; padding: 20px; border-radius: 12px; width: 100%; max-width: 420px; }
+    .modal-card { background: #fff; padding: 18px; border-radius: 12px; width: 100%; max-width: 400px; }
   </style>
 </head>
 <body>
 
-  <!-- VIEW 1: PRE-SCAN SESSION SETUP -->
+  <!-- VIEW 1: SESSION SETUP -->
   <div id="setupView" class="card">
-    <h2 style="margin-top:0; color:var(--primary);">LCC ScanMate Setup</h2>
+    <h3 style="margin-top:0; color:var(--primary);">LCC ScanMate Setup</h3>
+    
     <div class="form-group">
-      <label>Select Event / Activity</label>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <label style="margin:0;">Select Event</label>
+        <a href="javascript:void(0)" onclick="toggleNewEventField()" style="font-size:12px; color:var(--primary); font-weight:600;">+ New Event</a>
+      </div>
       <select id="eventSelect">
-        <option value="">Loading events from sheet...</option>
+        <option value="">Loading events...</option>
       </select>
     </div>
+
+    <!-- Hidden by default, toggled if creating a quick on-the-spot event -->
+    <div id="newEventGroup" style="display:none; background:#f1f5f9; padding:10px; border-radius:8px; margin-bottom:10px;">
+      <label>New Event Title</label>
+      <input type="text" id="newEventTitle" placeholder="e.g., General Convocation">
+      <label style="margin-top:6px;">Academic Year</label>
+      <input type="text" id="newEventAY" value="2026-2027">
+    </div>
+
     <div class="form-group">
       <label>Secretary Name / Station Section</label>
-      <input type="text" id="secretaryInput" placeholder="e.g., Maria Santos (BSIT 3A)">
+      <input type="text" id="secretaryInput" placeholder="e.g., Jane Doe (BSIT 3A)">
     </div>
-    <button onclick="startSession()">Start Attendance Scanning</button>
+
+    <button onclick="startSession()">Start Attendance Session</button>
   </div>
 
   <!-- VIEW 2: ACTIVE SCANNER VIEW -->
@@ -93,22 +104,22 @@
     <div class="card" style="padding: 12px;">
       <div style="display:flex; justify-content:space-between; align-items:flex-start;">
         <div>
-          <span id="activeEventTitle" style="font-weight:700; font-size:15px; color:#0f172a;"></span>
-          <div id="activeSecretaryName" style="font-size:12px; color:#64748b;"></div>
+          <span id="activeEventTitle" style="font-weight:700; font-size:14px; color:#0f172a;"></span>
+          <div id="activeSecretaryName" style="font-size:11px; color:#64748b;"></div>
         </div>
         <div style="text-align: right;">
-          <span id="netStatus" class="status-badge online">ONLINE</span>
-          <div style="font-size:11px; color:#475569; margin-top:4px;">
+          <span id="netStatus" class="badge online">ONLINE</span>
+          <div style="font-size:11px; color:#475569; margin-top:3px;">
             Queue: <b id="queueCount">0</b>
           </div>
         </div>
       </div>
 
-      <div id="reader" style="margin-top:10px;"></div>
+      <div id="reader" style="margin-top:8px;"></div>
 
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:10px;">
-        <button onclick="triggerManualSync()" style="padding:10px; font-size:13px;">Force Sync</button>
-        <button onclick="exitSession()" class="btn-secondary" style="padding:10px; font-size:13px; margin:0;">End Session</button>
+        <button onclick="triggerManualSync()" class="btn-small" style="background:#2563eb;">Sync Queue</button>
+        <button onclick="exitSession()" class="btn-secondary btn-small" style="margin:0;">End Session</button>
       </div>
     </div>
   </div>
@@ -116,8 +127,8 @@
   <!-- MODAL: REGISTER WALK-IN STUDENT -->
   <div id="walkInModal" class="modal-overlay">
     <div class="modal-card">
-      <h3 style="margin-top:0; color:var(--danger-border);">Unregistered Student ID</h3>
-      <p style="font-size:13px; color:#64748b;">ID not found in Master Roster. Enter student details below to record attendance:</p>
+      <h3 style="margin-top:0; color:var(--danger); font-size:16px;">Student Not in Roster</h3>
+      <p style="font-size:12px; color:#64748b; margin-top:-4px;">Enter details below to record attendance and add to masterlist:</p>
       
       <div class="form-group">
         <label>Student ID</label>
@@ -136,44 +147,62 @@
         <input type="text" id="modalYear" placeholder="e.g., 3">
       </div>
 
-      <button onclick="submitWalkIn()" style="background:var(--success-border);">Save & Record Scan</button>
-      <button onclick="closeModal()" class="btn-secondary">Cancel Scan</button>
+      <button onclick="submitWalkIn()" style="background:var(--success);">Save & Record</button>
+      <button onclick="closeModal()" class="btn-secondary">Dismiss</button>
     </div>
   </div>
 
   <script>
-    // PASTE YOUR DEPLOYED APPS SCRIPT WEB APP URL HERE:
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwV0TcI8F2QoK06GhEO24VaO2IVpleJvq0hjKHtVbNcRvryMcIzvfhdPF8llReggu8bFQ/exec";
 
     let activeSession = null;
     let rosterCache = {};
     let eventList = [];
     let scanQueue = JSON.parse(localStorage.getItem("scanmate_queue") || "[]");
+    let sessionScannedIds = new Set(JSON.parse(localStorage.getItem("session_scanned_ids") || "[]"));
     let html5QrCode = null;
     let isModalOpen = false;
     let lastScan = { id: "", time: 0 };
+    let isCreatingNewEvent = false;
 
-    function playBeep(success) {
+    // Audio Feedback
+    function playChime(type) {
       try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
         osc.connect(ctx.destination);
-        osc.frequency.value = success ? 880 : 300;
-        osc.start();
-        setTimeout(() => { osc.stop(); ctx.close(); }, success ? 140 : 300);
+        if (type === "valid") {
+          osc.frequency.value = 880;
+          osc.start();
+          setTimeout(() => { osc.stop(); ctx.close(); }, 120);
+        } else if (type === "duplicate") {
+          osc.frequency.value = 520;
+          osc.start();
+          setTimeout(() => { osc.frequency.value = 440; }, 100);
+          setTimeout(() => { osc.stop(); ctx.close(); }, 220);
+        } else {
+          osc.frequency.value = 260;
+          osc.start();
+          setTimeout(() => { osc.stop(); ctx.close(); }, 300);
+        }
       } catch (e) {}
+    }
+
+    // Toggle custom event input
+    function toggleNewEventField() {
+      isCreatingNewEvent = !isCreatingNewEvent;
+      document.getElementById("newEventGroup").style.display = isCreatingNewEvent ? "block" : "none";
+      document.getElementById("eventSelect").disabled = isCreatingNewEvent;
     }
 
     async function initApp() {
       rosterCache = JSON.parse(localStorage.getItem("scanmate_roster") || "{}");
       activeSession = JSON.parse(localStorage.getItem("scanmate_session") || "null");
 
-      // Auto-resume active session if secretary switched tabs/apps
       if (activeSession) {
         resumeScannerView();
         return;
       }
-
       await fetchRosterAndEvents();
     }
 
@@ -200,17 +229,31 @@
     }
 
     function startSession() {
-      const select = document.getElementById("eventSelect");
-      const eventId = select.value;
-      const eventTitle = select.options[select.selectedIndex]?.text || "General Event";
       const secretary = document.getElementById("secretaryInput").value.trim();
-
       if (!secretary) {
-        alert("Please enter the Secretary Name / Station.");
+        alert("Please enter your Secretary Name / Station.");
         return;
       }
 
-      activeSession = { eventId, eventTitle, secretary };
+      let eventId, eventTitle, ay = "2026-2027", isNew = false;
+
+      if (isCreatingNewEvent) {
+        const titleInput = document.getElementById("newEventTitle").value.trim();
+        if (!titleInput) {
+          alert("Please specify a title for the new event.");
+          return;
+        }
+        eventId = "EVT-" + Date.now().toString().slice(-6);
+        eventTitle = titleInput;
+        ay = document.getElementById("newEventAY").value.trim() || "2026-2027";
+        isNew = true;
+      } else {
+        const select = document.getElementById("eventSelect");
+        eventId = select.value;
+        eventTitle = select.options[select.selectedIndex]?.text || "Campus Event";
+      }
+
+      activeSession = { eventId, eventTitle, secretary, academicYear: ay, isNewEvent: isNew };
       localStorage.setItem("scanmate_session", JSON.stringify(activeSession));
 
       resumeScannerView();
@@ -231,24 +274,38 @@
         { facingMode: "environment" },
         { fps: 15, qrbox: { width: 250, height: 250 } },
         handleScanSuccess
-      ).catch(err => console.error("Camera access error:", err));
+      ).catch(err => console.error("Camera access failed:", err));
     }
 
     function handleScanSuccess(decodedText) {
       if (isModalOpen) return;
 
+      const cleanId = decodedText.trim();
       const now = Date.now();
-      // 3-second debounce per student to prevent rapid-fire duplicates
-      if (decodedText === lastScan.id && (now - lastScan.time) < 3000) return;
-      lastScan = { id: decodedText, time: now };
 
-      const student = rosterCache[decodedText];
+      // Debounce: ignore same code within 2.5 seconds to prevent spam
+      if (cleanId === lastScan.id && (now - lastScan.time) < 2500) return;
+      lastScan = { id: cleanId, time: now };
 
+      // 1. Check if already scanned during this session
+      if (sessionScannedIds.has(cleanId)) {
+        const student = rosterCache[cleanId];
+        const studentName = student ? student.name : cleanId;
+        playChime("duplicate");
+        triggerPillFeedback("duplicate", `Already recorded: ${studentName}`);
+        return;
+      }
+
+      // 2. Check if student exists in Master Roster
+      const student = rosterCache[cleanId];
       if (student) {
-        playBeep(true);
-        triggerVisualFeedback(true, `Recorded: ${student.name}`);
+        sessionScannedIds.add(cleanId);
+        localStorage.setItem("session_scanned_ids", JSON.stringify([...sessionScannedIds]));
+
+        playChime("valid");
+        triggerPillFeedback("valid", `Recorded: ${student.name}`);
         appendQueueRecord({
-          studentId: decodedText,
+          studentId: cleanId,
           name: student.name,
           program: student.program,
           year: student.year,
@@ -256,20 +313,26 @@
           scannedAt: new Date().toISOString()
         });
       } else {
-        playBeep(false);
-        triggerVisualFeedback(false, `Unregistered ID: ${decodedText}`);
-        openWalkInModal(decodedText);
+        // Unknown student: trigger red flash and open walk-in modal
+        playChime("invalid");
+        triggerPillFeedback("invalid", `Unregistered: ${cleanId}`);
+        openWalkInModal(cleanId);
       }
     }
 
-    function triggerVisualFeedback(isValid, message) {
+    // Small discreet notification pill
+    function triggerPillFeedback(type, message) {
       const banner = document.getElementById("feedbackBanner");
       banner.style.display = "block";
       banner.innerText = message;
 
-      if (isValid) {
+      if (type === "valid") {
         document.body.className = "scan-valid";
         banner.style.background = "#059669";
+        banner.style.color = "#ffffff";
+      } else if (type === "duplicate") {
+        document.body.className = "scan-duplicate";
+        banner.style.background = "#d97706";
         banner.style.color = "#ffffff";
       } else {
         document.body.className = "scan-invalid";
@@ -280,7 +343,7 @@
       setTimeout(() => {
         document.body.className = "";
         banner.style.display = "none";
-      }, 2200);
+      }, 1800);
     }
 
     function appendQueueRecord(record) {
@@ -297,6 +360,7 @@
       document.getElementById("queueCount").innerText = scanQueue.length;
     }
 
+    // Walk-in Student Handling
     function openWalkInModal(studentId) {
       isModalOpen = true;
       document.getElementById("modalId").value = studentId;
@@ -325,6 +389,9 @@
       rosterCache[id] = { name, program, year };
       localStorage.setItem("scanmate_roster", JSON.stringify(rosterCache));
 
+      sessionScannedIds.add(id);
+      localStorage.setItem("session_scanned_ids", JSON.stringify([...sessionScannedIds]));
+
       appendQueueRecord({
         studentId: id,
         name: name,
@@ -336,9 +403,10 @@
       });
 
       closeModal();
-      triggerVisualFeedback(true, `Walk-in Saved: ${name}`);
+      triggerPillFeedback("valid", `Walk-in Saved: ${name}`);
     }
 
+    // Background Syncing Engine
     async function syncQueueToServer() {
       if (scanQueue.length === 0 || !activeSession) return;
 
@@ -350,6 +418,8 @@
           body: JSON.stringify({
             eventId: activeSession.eventId,
             eventTitle: activeSession.eventTitle,
+            academicYear: activeSession.academicYear,
+            isNewEvent: activeSession.isNewEvent || false,
             scannedBy: activeSession.secretary,
             records: recordsToPush
           })
@@ -358,16 +428,18 @@
         if (res.ok) {
           scanQueue = scanQueue.slice(recordsToPush.length);
           localStorage.setItem("scanmate_queue", JSON.stringify(scanQueue));
+          activeSession.isNewEvent = false; // Prevent re-posting the new event row
+          localStorage.setItem("scanmate_session", JSON.stringify(activeSession));
           updateQueueUI();
         }
       } catch (err) {
-        console.log("Device offline; records stay preserved locally.");
+        console.log("Device offline; queued records remain safe in LocalStorage.");
       }
     }
 
     function triggerManualSync() {
       if (!navigator.onLine) {
-        alert("Device is offline. Connect to Wi-Fi or mobile data first.");
+        alert("Device is offline. Connect to Wi-Fi or data first.");
         return;
       }
       syncQueueToServer();
@@ -375,23 +447,24 @@
 
     function exitSession() {
       if (scanQueue.length > 0) {
-        if (!confirm(`You have ${scanQueue.length} unsynced scans in queue. End session anyway?`)) {
+        if (!confirm(`You have ${scanQueue.length} unsynced records. End session anyway?`)) {
           return;
         }
       }
       localStorage.removeItem("scanmate_session");
+      localStorage.removeItem("session_scanned_ids");
       location.reload();
     }
 
     window.addEventListener("online", () => {
       document.getElementById("netStatus").innerText = "ONLINE";
-      document.getElementById("netStatus").className = "status-badge online";
+      document.getElementById("netStatus").className = "badge online";
       syncQueueToServer();
     });
 
     window.addEventListener("offline", () => {
       document.getElementById("netStatus").innerText = "OFFLINE";
-      document.getElementById("netStatus").className = "status-badge offline";
+      document.getElementById("netStatus").className = "badge offline";
     });
 
     initApp();
